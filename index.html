@@ -687,6 +687,10 @@
                             <input type="number" id="gridWidth" value="10" min="3" max="40" onchange="updateGridSizeCustom()">
                         </div>
                         <div class="setting-item">
+                            <label>关卡 ID</label>
+                            <input type="number" id="levelId" value="1" min="1" step="1" title="用于关卡配置优先级的正整数 ID">
+                        </div>
+                        <div class="setting-item">
                             <label>发射列数量</label>
                             <input type="number" id="launcherCount" value="3" min="3" max="7">
                         </div>
@@ -2251,6 +2255,10 @@
             }
 
             const launcherCount = parseInt(document.getElementById('launcherCount').value);
+            const levelIdInput = document.getElementById('levelId');
+            const parsedLevelId = Number.parseInt(levelIdInput.value, 10);
+            const levelId = Number.isInteger(parsedLevelId) && parsedLevelId >= 1 ? parsedLevelId : 1;
+            levelIdInput.value = levelId;
             // 解析弹药量权重配置（格式：弹药量:权重，用英文逗号分隔）
             const ammoWeightPairs = document.getElementById('maxAmmo').value
                 .split(',')
@@ -2467,6 +2475,7 @@
                 }
             }
             levelData = {
+                Id: levelId,
                 GridSize: gridSize,
                 LauncherCount: launcherCount,
                 StorageSize: parseInt(document.getElementById('storageSize').value),
@@ -2480,11 +2489,6 @@
                         Hidden: l.hidden || false
                     }))
                 })).filter(col => col.Items.length > 0),
-                TotalPixels: pixels.length,
-                TotalLaunchers: totalLaunchers,
-                AvgAmmoPerLauncher: avgAmmo.toFixed(1),
-                Colors: Object.keys(colorGroups),
-                Difficulty: difficulty,
                 LauncherLinks: [],  // [{IdA, IdB}]
                 FrozenLaunchers: [] // [{ItemId, RequiredCount}]
             };
@@ -4534,24 +4538,12 @@
             const srcCol = levelData.Launchers.find(l => l.Column === fromCol);
             if (!srcCol) return;
             const originalIdx = srcCol.Items.length - 1 - idxFromTop;
-            const item = srcCol.Items[originalIdx];
-
-            // 检查：移列后是否会导致连接的两个发射器列差 > 1 → 自动解除连接并提示
-            if (item && item._id != null && isItemLinked(item._id)) {
-                const partner = getLinkedPartner(item._id);
-                if (partner && Math.abs(toCol - partner.colIdx) > 1) {
-                    const confirmBreak = confirm(`⚠️ 移到列${toCol+1}后，该发射器与其连接伙伴（列${partner.colIdx+1}）的列差超过1，\n将自动解除它们的连接关系。是否继续？`);
-                    if (!confirmBreak) { renderLauncherEditor(); return; }
-                    // 解除连接
-                    levelData.LauncherLinks = levelData.LauncherLinks.filter(l => l.IdA !== item._id && l.IdB !== item._id);
-                }
-            }
 
             let dstCol = levelData.Launchers.find(l => l.Column === toCol);
             if (!dstCol) {
                 dstCol = { Column: toCol, Items: [] };
                 levelData.Launchers.push(dstCol);
-                levelData.Launchers.sort((a, b) => a.column - b.column);
+                levelData.Launchers.sort((a, b) => a.Column - b.Column);
             }
             const [movedItem] = srcCol.Items.splice(originalIdx, 1);
             dstCol.Items.push(movedItem);
@@ -4578,7 +4570,7 @@
             if (!dstCol) {
                 dstCol = { Column: toCol, Items: [] };
                 levelData.Launchers.push(dstCol);
-                levelData.Launchers.sort((a, b) => a.column - b.column);
+                levelData.Launchers.sort((a, b) => a.Column - b.Column);
             }
             const [item] = srcCol.Items.splice(itemIdx, 1);
             dstCol.Items.push(item);
@@ -4844,14 +4836,6 @@
                 return;
             }
 
-            // 校验：列差 ≤ 1（同列或相邻列）
-            if (Math.abs(linkPendingItem.colIdx - colIdx) > 1) {
-                alert('❌ 只能连接同列或相邻列的发射器（列差最多为1）');
-                linkPendingItem = null;
-                renderLauncherEditor();
-                return;
-            }
-
             // 校验：同列时必须相邻（idxFromTop 差值=1，中间不能有其他发射器）
             if (linkPendingItem.colIdx === colIdx && Math.abs(linkPendingItem.idxFromTop - idxFromTop) !== 1) {
                 alert('❌ 同列连接只能连接相邻的两个发射器（中间不能有其他发射器）');
@@ -4930,11 +4914,14 @@
         function applyImportedLevel(data) {
             // 兼容大写和小写字段名
             const gs = data.GridSize || data.gridSize;
+            const rawLevelId = data.Id ?? data.id;
+            const parsedLevelId = Number.parseInt(rawLevelId, 10);
+            const levelId = Number.isInteger(parsedLevelId) && parsedLevelId >= 1 ? parsedLevelId : 1;
             const launcherCount = data.LauncherCount || data.launcherCount;
             const storageSize = data.StorageSize || data.storageSize;
             const pixelMap = data.PixelMap || data.pixelMap;
             const launchers = data.Launchers || data.launchers;
-            const difficulty = data.Difficulty || data.difficulty;
+            const difficulty = data.Difficulty || data.difficulty || 3;
 
             if (!gs || !pixelMap || !launchers) {
                 alert('JSON 缺少必要字段（GridSize、PixelMap、Launchers），请确认导入的是正确的关卡文件。');
@@ -4944,6 +4931,7 @@
             // 1. 更新网格大小设置
             gridSize = gs;
             document.getElementById('gridWidth').value = gs;
+            document.getElementById('levelId').value = levelId;
             if (launcherCount) document.getElementById('launcherCount').value = launcherCount;
             if (storageSize) document.getElementById('storageSize').value = storageSize;
             if (difficulty) {
@@ -4976,17 +4964,13 @@
 
             // 5. 还原 levelData（完整保留导入的数据，包括发射器配置和连接关系）
             levelData = {
+                Id: levelId,
                 GridSize: gs,
                 LauncherCount: launcherCount || 3,
                 StorageSize: storageSize || 5,
                 ColorList: importedColorList || null,
                 PixelMap: pixelMap,
                 Launchers: launchers,
-                TotalPixels: data.TotalPixels || data.totalPixels || 0,
-                TotalLaunchers: data.TotalLaunchers || data.totalLaunchers || 0,
-                AvgAmmoPerLauncher: data.AvgAmmoPerLauncher || data.avgAmmoPerLauncher || '0',
-                Colors: data.Colors || data.colors || Array.from(colorSet),
-                Difficulty: difficulty || 3,
                 LauncherLinks: data.LauncherLinks || data.launcherLinks || [],
                 FrozenLaunchers: data.FrozenLaunchers || data.frozenLaunchers || []
             };
