@@ -683,8 +683,12 @@
                     <div class="panel-title">关卡设置</div>
                     <div class="settings-group">
                         <div class="setting-item">
-                            <label>地图大小</label>
-                            <input type="number" id="gridWidth" value="10" min="3" max="40" onchange="updateGridSizeCustom()">
+                            <label>地图宽度</label>
+                            <input type="number" id="gridWidth" value="10" min="3" max="160" onchange="updateGridSizeCustom()">
+                        </div>
+                        <div class="setting-item">
+                            <label>地图高度</label>
+                            <input type="number" id="gridHeight" value="10" min="3" max="160" onchange="updateGridSizeCustom()">
                         </div>
                         <div class="setting-item">
                             <label>关卡 ID</label>
@@ -692,7 +696,7 @@
                         </div>
                         <div class="setting-item">
                             <label>发射列数量</label>
-                            <input type="number" id="launcherCount" value="3" min="3" max="7">
+                            <input type="number" id="launcherCount" value="3" min="2" max="7">
                         </div>
                         <div class="setting-item">
                             <label>暂存槽数量</label>
@@ -864,6 +868,10 @@
 
     <script>
         // 全局狀態
+        // GridSize is retained for legacy square JSON. New levels use explicit
+        // GridWidth/GridHeight and keep PixelMap at exactly width * height.
+        let gridWidth = 10;
+        let gridHeight = 10;
         let gridSize = 10;
         let pixelData = [];
         let selectedColor = null;
@@ -891,13 +899,13 @@
         // 初始化网格
         function initGrid() {
             const grid = document.getElementById('pixelGrid');
-            grid.style.gridTemplateColumns = `repeat(${gridSize}, 30px)`;
+            grid.style.gridTemplateColumns = `repeat(${gridWidth}, 30px)`;
             grid.innerHTML = '';
             pixelData = [];
 
-            for (let y = 0; y < gridSize; y++) {
+            for (let y = 0; y < gridHeight; y++) {
                 pixelData[y] = [];
-                for (let x = 0; x < gridSize; x++) {
+                for (let x = 0; x < gridWidth; x++) {
                     pixelData[y][x] = null;
                     const cell = document.createElement('div');
                     cell.className = 'pixel-cell empty';
@@ -950,7 +958,11 @@
 
         // 更新网格大小
         function updateGridSize() {
-            gridSize = parseInt(document.getElementById('gridSize').value);
+            const size = parseInt(document.getElementById('gridSize').value) || 10;
+            gridWidth = gridHeight = size;
+            gridSize = size;
+            document.getElementById('gridWidth').value = size;
+            document.getElementById('gridHeight').value = size;
             initGrid();
         }
 
@@ -979,10 +991,10 @@
 
         // 计算格子所在层级（從外到內）
         function calculateLayer(x, y) {
-            const center = Math.floor(gridSize / 2);
-            const dx = Math.abs(x - center);
-            const dy = Math.abs(y - center);
-            const maxDist = Math.floor(gridSize / 2);
+            const centerX = (gridWidth - 1) / 2;
+            const centerY = (gridHeight - 1) / 2;
+            const dx = Math.abs(x - centerX);
+            const dy = Math.abs(y - centerY);
             const dist = Math.max(dx, dy);
             return dist; // 0 是最內层，maxDist 是最外层
         }
@@ -992,8 +1004,8 @@
             let totalPixels = 0;
             const colors = new Set();
 
-            for (let y = 0; y < gridSize; y++) {
-                for (let x = 0; x < gridSize; x++) {
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
                     if (pixelData[y][x]) {
                         totalPixels++;
                         colors.add(pixelData[y][x]);
@@ -1061,7 +1073,7 @@
 
             // 计算难度評分
             const colorComplexity = colors * 10;
-            const pixelDensity = pixels / (gridSize * gridSize) * 50;
+            const pixelDensity = pixels / (gridWidth * gridHeight) * 50;
             const storagePressure = (launcherCount - storageSize) * 5;
             
             let difficulty = (colorComplexity + pixelDensity + storagePressure) * diffMod;
@@ -1272,8 +1284,8 @@
         // 统计网格中每种颜色的数量
         function countColorsInGrid() {
             const counts = {};
-            for (let y = 0; y < gridSize; y++) {
-                for (let x = 0; x < gridSize; x++) {
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
                     const c = pixelData[y] && pixelData[y][x];
                     if (c) counts[c] = (counts[c] || 0) + 1;
                 }
@@ -1367,24 +1379,26 @@
                 const imgW = img.naturalWidth;
                 const imgH = img.naturalHeight;
 
-                // 判断图片尺寸是否与网格大小一致
-                if (imgW === gridSize && imgH === gridSize) {
+                // Exact mode preserves each source pixel as one editor cell.
+                if (imgW === gridWidth && imgH === gridHeight) {
                     _lastUploadedPNGImg = img;
                     _lastUploadedPNGW = imgW;
                     _lastUploadedPNGH = imgH;
                     _lastUploadedPNGMode = 'exact';
                     _extractFromImageExact(img, imgW, imgH);
                 } else {
-                    const msg = `图片尺寸为 ${imgW}×${imgH}，当前网格大小为 ${gridSize}×${gridSize}。\n\n` +
+                    const msg = `图片尺寸为 ${imgW}×${imgH}，当前网格大小为 ${gridWidth}×${gridHeight}。\n\n` +
                         `选择处理方式：\n` +
-                        `• 确定 → 自动将网格大小调整为 ${Math.min(imgW, imgH)}×${Math.min(imgW, imgH)}（推荐，1像素=1格）\n` +
+                        `• 确定 → 自动将网格大小调整为 ${Math.min(imgW, 160)}×${Math.min(imgH, 160)}（推荐，1像素=1格）\n` +
                         `• 取消 → 按比例缩放采样到当前网格（可能有精度损失）`;
                     const autoResize = confirm(msg);
 
                     if (autoResize) {
-                        const newSize = Math.min(imgW, imgH, 40);
-                        gridSize = newSize;
-                        document.getElementById('gridWidth').value = newSize;
+                        gridWidth = Math.min(imgW, 160);
+                        gridHeight = Math.min(imgH, 160);
+                        gridSize = Math.max(gridWidth, gridHeight);
+                        document.getElementById('gridWidth').value = gridWidth;
+                        document.getElementById('gridHeight').value = gridHeight;
                         initGrid();
                         _lastUploadedPNGImg = img;
                         _lastUploadedPNGW = imgW;
@@ -1458,7 +1472,7 @@
         }
 
         // 像素PNG精确模式：1图片像素 = 1网格格子（最精确）
-        // 支持图片比网格大（取左上角gridSize×gridSize区域）
+        // Supports rectangular images and uses the matching top-left area.
         function _extractFromImageExact(img, imgW, imgH) {
             const canvas = document.createElement('canvas');
             canvas.width = imgW;
@@ -1468,11 +1482,11 @@
             ctx.drawImage(img, 0, 0, imgW, imgH);
             const data = ctx.getImageData(0, 0, imgW, imgH).data;
 
-            const newPixelData = Array(gridSize).fill(null).map(() => Array(gridSize).fill(null));
+            const newPixelData = Array(gridHeight).fill(null).map(() => Array(gridWidth).fill(null));
             const colorSet = new Set();
 
-            for (let y = 0; y < gridSize && y < imgH; y++) {
-                for (let x = 0; x < gridSize && x < imgW; x++) {
+            for (let y = 0; y < gridHeight && y < imgH; y++) {
+                for (let x = 0; x < gridWidth && x < imgW; x++) {
                     const idx = (y * imgW + x) * 4;
                     const r = data[idx], g = data[idx+1], b = data[idx+2], a = data[idx+3];
                     if (a >= 128) { // alpha >= 50% 视为有内容
@@ -1489,12 +1503,13 @@
         // 像素PNG缩放模式：按比例缩放采样（当图片与网格尺寸不一致时）
         // 使用高分辨率Canvas + 关闭抗锯齿 + 格内多数投票
         function _extractFromImageScaled(img, imgW, imgH) {
-            // Canvas尺寸 = gridSize 的精确整数倍（确保每格对应整数个Canvas像素）
+            // Canvas dimensions are exact integer multiples of each grid axis.
             const cellPx = 32; // 每格32×32个Canvas像素，足够精确
-            const canvasSize = gridSize * cellPx;
+            const canvasWidth = gridWidth * cellPx;
+            const canvasHeight = gridHeight * cellPx;
             const canvas = document.createElement('canvas');
-            canvas.width = canvasSize;
-            canvas.height = canvasSize;
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
             const ctx = canvas.getContext('2d');
             ctx.imageSmoothingEnabled = false; // 关闭抗锯齿，保留原始像素边界
 
@@ -1502,21 +1517,21 @@
             const imgRatio = imgW / imgH;
             let dw, dh, dx, dy;
             if (imgRatio >= 1) {
-                dw = canvasSize; dh = canvasSize / imgRatio;
-                dx = 0; dy = (canvasSize - dh) / 2;
+                dw = canvasWidth; dh = canvasWidth / imgRatio;
+                dx = 0; dy = (canvasHeight - dh) / 2;
             } else {
-                dh = canvasSize; dw = canvasSize * imgRatio;
-                dx = (canvasSize - dw) / 2; dy = 0;
+                dh = canvasHeight; dw = canvasHeight * imgRatio;
+                dx = (canvasWidth - dw) / 2; dy = 0;
             }
-            ctx.clearRect(0, 0, canvasSize, canvasSize);
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
             ctx.drawImage(img, dx, dy, dw, dh);
 
-            const data = ctx.getImageData(0, 0, canvasSize, canvasSize).data;
-            const newPixelData = Array(gridSize).fill(null).map(() => Array(gridSize).fill(null));
+            const data = ctx.getImageData(0, 0, canvasWidth, canvasHeight).data;
+            const newPixelData = Array(gridHeight).fill(null).map(() => Array(gridWidth).fill(null));
             const colorSet = new Set();
 
-            for (let gy = 0; gy < gridSize; gy++) {
-                for (let gx = 0; gx < gridSize; gx++) {
+            for (let gy = 0; gy < gridHeight; gy++) {
+                for (let gx = 0; gx < gridWidth; gx++) {
                     const x0 = gx * cellPx, x1 = x0 + cellPx;
                     const y0 = gy * cellPx, y1 = y0 + cellPx;
                     const votes = {};
@@ -1525,7 +1540,7 @@
                     for (let py = y0; py < y1; py++) {
                         for (let px = x0; px < x1; px++) {
                             total++;
-                            const idx = (py * canvasSize + px) * 4;
+                            const idx = (py * canvasWidth + px) * 4;
                             const a = data[idx+3];
                             if (a < 128) continue;
                             opaque++;
@@ -1557,8 +1572,8 @@
             if (colorList.length > 0 && threshold > 0 && colorList.length > 1) {
                 const clusters = mergeSimilarColors(colorList, threshold);
                 updateColorMapping(clusters);
-                for (let y = 0; y < gridSize; y++) {
-                    for (let x = 0; x < gridSize; x++) {
+                for (let y = 0; y < gridHeight; y++) {
+                    for (let x = 0; x < gridWidth; x++) {
                         if (newPixelData[y][x]) newPixelData[y][x] = getMappedColor(newPixelData[y][x]);
                     }
                 }
@@ -1580,13 +1595,13 @@
             const svg = doc.querySelector('svg');
             if (!svg) return;
 
-            // Canvas尺寸 = gridSize 的精确整数倍
             // 每格32px，确保每格内有32×32=1024个采样点（精度极高）
             const cellPx = 32;
-            const canvasSize = gridSize * cellPx;
+            const canvasWidth = gridWidth * cellPx;
+            const canvasHeight = gridHeight * cellPx;
             const canvas = document.createElement('canvas');
-            canvas.width = canvasSize;
-            canvas.height = canvasSize;
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
             const ctx = canvas.getContext('2d');
             ctx.imageSmoothingEnabled = false; // 关闭抗锯齿
 
@@ -1595,27 +1610,27 @@
             const url = URL.createObjectURL(svgBlob);
 
             img.onload = function() {
-                ctx.clearRect(0, 0, canvasSize, canvasSize);
+                ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
                 // 保持宽高比，居中绘制
                 const imgRatio = img.width / img.height;
                 let drawWidth, drawHeight, drawX, drawY;
                 if (imgRatio >= 1) {
-                    drawWidth = canvasSize;
-                    drawHeight = canvasSize / imgRatio;
+                    drawWidth = canvasWidth;
+                    drawHeight = canvasWidth / imgRatio;
                     drawX = 0;
-                    drawY = (canvasSize - drawHeight) / 2;
+                    drawY = (canvasHeight - drawHeight) / 2;
                 } else {
-                    drawHeight = canvasSize;
-                    drawWidth = canvasSize * imgRatio;
-                    drawX = (canvasSize - drawWidth) / 2;
+                    drawHeight = canvasHeight;
+                    drawWidth = canvasHeight * imgRatio;
+                    drawX = (canvasWidth - drawWidth) / 2;
                     drawY = 0;
                 }
                 ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
                 URL.revokeObjectURL(url);
 
-                const imageData = ctx.getImageData(0, 0, canvasSize, canvasSize);
-                extractPixelsFromImageData(imageData, canvasSize, cellPx);
+                const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+                extractPixelsFromImageData(imageData, canvasWidth, canvasHeight, cellPx);
             };
 
             img.onerror = function() {
@@ -1648,9 +1663,9 @@
         // 从 ImageData 提取像素（供SVG Canvas栅格化路径使用）
         // 参数 cellPx：每格对应的Canvas像素数（整数，确保边界精确）
         // 策略：对每格内所有Canvas像素做多数投票；有效像素占比 >= 40% 才认为该格有内容
-        function extractPixelsFromImageData(imageData, size, cellPx) {
+        function extractPixelsFromImageData(imageData, imageWidth, imageHeight, cellPx) {
             const data = imageData.data;
-            const tempPixelData = Array(gridSize).fill(null).map(() => Array(gridSize).fill(null));
+            const tempPixelData = Array(gridHeight).fill(null).map(() => Array(gridWidth).fill(null));
 
             // 获取SVG原始颜色列表
             const svgColorList = Array.from(extractedColors);
@@ -1658,23 +1673,23 @@
             // 使用精确整数边界（cellPx为整数时每格边界完全精确）
             const usePrecise = cellPx && Number.isInteger(cellPx);
 
-            for (let gy = 0; gy < gridSize; gy++) {
-                for (let gx = 0; gx < gridSize; gx++) {
+            for (let gy = 0; gy < gridHeight; gy++) {
+                for (let gx = 0; gx < gridWidth; gx++) {
                     // 精确整数边界（当canvasSize = gridSize * cellPx时，边界无浮点误差）
-                    const x0 = usePrecise ? gx * cellPx : Math.round(gx * size / gridSize);
-                    const y0 = usePrecise ? gy * cellPx : Math.round(gy * size / gridSize);
-                    const x1 = usePrecise ? x0 + cellPx : Math.round((gx + 1) * size / gridSize);
-                    const y1 = usePrecise ? y0 + cellPx : Math.round((gy + 1) * size / gridSize);
+                    const x0 = usePrecise ? gx * cellPx : Math.round(gx * imageWidth / gridWidth);
+                    const y0 = usePrecise ? gy * cellPx : Math.round(gy * imageHeight / gridHeight);
+                    const x1 = usePrecise ? x0 + cellPx : Math.round((gx + 1) * imageWidth / gridWidth);
+                    const y1 = usePrecise ? y0 + cellPx : Math.round((gy + 1) * imageHeight / gridHeight);
 
                     // 对格内所有像素做多数投票
                     const colorVotes = {};
                     let totalSamples = 0;
                     let opaqueSamples = 0;
 
-                    for (let py = y0; py < y1 && py < size; py++) {
-                        for (let px = x0; px < x1 && px < size; px++) {
+                    for (let py = y0; py < y1 && py < imageHeight; py++) {
+                        for (let px = x0; px < x1 && px < imageWidth; px++) {
                             totalSamples++;
-                            const idx = (py * size + px) * 4;
+                            const idx = (py * imageWidth + px) * 4;
                             const a = data[idx + 3];
                             if (a < 128) continue; // alpha < 50% 视为透明（更严格）
                             opaqueSamples++;
@@ -1706,8 +1721,8 @@
             if (svgColorList.length > 0 && threshold > 0 && svgColorList.length > 1) {
                 const clusters = mergeSimilarColors(svgColorList, threshold);
                 updateColorMapping(clusters);
-                for (let y = 0; y < gridSize; y++) {
-                    for (let x = 0; x < gridSize; x++) {
+                for (let y = 0; y < gridHeight; y++) {
+                    for (let x = 0; x < gridWidth; x++) {
                         if (tempPixelData[y][x]) tempPixelData[y][x] = getMappedColor(tempPixelData[y][x]);
                     }
                 }
@@ -1725,9 +1740,9 @@
         function parseSVGElementsDirectly(doc, vbWidth, vbHeight) {
             // 確保网格已初始化為正確大小
             initGrid();
-            const tempPixelData = Array(gridSize).fill(null).map(() => Array(gridSize).fill(null));
-            const cellWidth = vbWidth / gridSize;
-            const cellHeight = vbHeight / gridSize;
+            const tempPixelData = Array(gridHeight).fill(null).map(() => Array(gridWidth).fill(null));
+            const cellWidth = vbWidth / gridWidth;
+            const cellHeight = vbHeight / gridHeight;
             
             // 收集所有原始颜色
             const rawColors = new Set();
@@ -1751,8 +1766,8 @@
                     const endGX = Math.ceil((x + w) / cellWidth);
                     const endGY = Math.ceil((y + h) / cellHeight);
 
-                    for (let gy = startGY; gy < endGY && gy < gridSize; gy++) {
-                        for (let gx = startGX; gx < endGX && gx < gridSize; gx++) {
+                    for (let gy = startGY; gy < endGY && gy < gridHeight; gy++) {
+                        for (let gx = startGX; gx < endGX && gx < gridWidth; gx++) {
                             if (gx >= 0 && gy >= 0) {
                                 tempPixelData[gy][gx] = color;
                             }
@@ -1774,8 +1789,8 @@
                     rawColors.add(color);
                     
                     // 檢查每個网格單元格是否在圓內
-                    for (let gy = 0; gy < gridSize; gy++) {
-                        for (let gx = 0; gx < gridSize; gx++) {
+                    for (let gy = 0; gy < gridHeight; gy++) {
+                        for (let gx = 0; gx < gridWidth; gx++) {
                             const cellCenterX = (gx + 0.5) * cellWidth;
                             const cellCenterY = (gy + 0.5) * cellHeight;
                             const dist = Math.sqrt(Math.pow(cellCenterX - cx, 2) + Math.pow(cellCenterY - cy, 2));
@@ -1801,8 +1816,8 @@
                     const color = normalizeColor(fill);
                     rawColors.add(color);
                     
-                    for (let gy = 0; gy < gridSize; gy++) {
-                        for (let gx = 0; gx < gridSize; gx++) {
+                    for (let gy = 0; gy < gridHeight; gy++) {
+                        for (let gx = 0; gx < gridWidth; gx++) {
                             const cellCenterX = (gx + 0.5) * cellWidth;
                             const cellCenterY = (gy + 0.5) * cellHeight;
                             
@@ -1839,8 +1854,8 @@
 
                     if (vertices.length >= 3) {
                         // 使用點在多邊形內測試
-                        for (let gy = 0; gy < gridSize; gy++) {
-                            for (let gx = 0; gx < gridSize; gx++) {
+                        for (let gy = 0; gy < gridHeight; gy++) {
+                            for (let gx = 0; gx < gridWidth; gx++) {
                                 const cellCenterX = (gx + 0.5) * cellWidth;
                                 const cellCenterY = (gy + 0.5) * cellHeight;
                                 
@@ -1867,8 +1882,8 @@
                     const vertices = parseSimplePath(d);
                     
                     if (vertices.length >= 3) {
-                        for (let gy = 0; gy < gridSize; gy++) {
-                            for (let gx = 0; gx < gridSize; gx++) {
+                        for (let gy = 0; gy < gridHeight; gy++) {
+                            for (let gx = 0; gx < gridWidth; gx++) {
                                 const cellCenterX = (gx + 0.5) * cellWidth;
                                 const cellCenterY = (gy + 0.5) * cellHeight;
                                 
@@ -1888,8 +1903,8 @@
                 updateColorMapping(clusters);
                 
                 // 應用颜色映射
-                for (let y = 0; y < gridSize; y++) {
-                    for (let x = 0; x < gridSize; x++) {
+                for (let y = 0; y < gridHeight; y++) {
+                    for (let x = 0; x < gridWidth; x++) {
                         if (tempPixelData[y][x]) {
                             tempPixelData[y][x] = getMappedColor(tempPixelData[y][x]);
                         }
@@ -1909,10 +1924,10 @@
 
         // 將像素圖案居中到网格中央
         function centerPixelData() {
-            let minX = gridSize, maxX = -1, minY = gridSize, maxY = -1;
+            let minX = gridWidth, maxX = -1, minY = gridHeight, maxY = -1;
             
-            for (let y = 0; y < gridSize; y++) {
-                for (let x = 0; x < gridSize; x++) {
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
                     if (pixelData[y] && pixelData[y][x]) {
                         minX = Math.min(minX, x);
                         maxX = Math.max(maxX, x);
@@ -1926,21 +1941,21 @@
 
             const currentCenterX = (minX + maxX) / 2;
             const currentCenterY = (minY + maxY) / 2;
-            const targetCenterX = (gridSize - 1) / 2;
-            const targetCenterY = (gridSize - 1) / 2;
+            const targetCenterX = (gridWidth - 1) / 2;
+            const targetCenterY = (gridHeight - 1) / 2;
             const offsetX = Math.round(targetCenterX - currentCenterX);
             const offsetY = Math.round(targetCenterY - currentCenterY);
 
             if (offsetX === 0 && offsetY === 0) return; // 已居中
 
-            const newData = Array(gridSize).fill(null).map(() => Array(gridSize).fill(null));
+            const newData = Array(gridHeight).fill(null).map(() => Array(gridWidth).fill(null));
             
-            for (let y = 0; y < gridSize; y++) {
-                for (let x = 0; x < gridSize; x++) {
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
                     if (pixelData[y] && pixelData[y][x]) {
                         const newX = x + offsetX;
                         const newY = y + offsetY;
-                        if (newX >= 0 && newX < gridSize && newY >= 0 && newY < gridSize) {
+                        if (newX >= 0 && newX < gridWidth && newY >= 0 && newY < gridHeight) {
                             newData[newY][newX] = pixelData[y][x];
                         }
                     }
@@ -2027,8 +2042,8 @@
 
         // 刷新网格显示
         function refreshGridDisplay() {
-            for (let y = 0; y < gridSize; y++) {
-                for (let x = 0; x < gridSize; x++) {
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
                     const cell = document.querySelector(`[data-x="${x}"][data-y="${y}"]`);
                     if (cell) {
                         if (pixelData[y] && pixelData[y][x]) {
@@ -2053,10 +2068,10 @@
         // 自动布局
         function autoLayout() {
             // 根据現有像素计算最佳布局
-            let minX = gridSize, maxX = 0, minY = gridSize, maxY = 0;
+            let minX = gridWidth, maxX = 0, minY = gridHeight, maxY = 0;
             
-            for (let y = 0; y < gridSize; y++) {
-                for (let x = 0; x < gridSize; x++) {
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
                     if (pixelData[y][x]) {
                         minX = Math.min(minX, x);
                         maxX = Math.max(maxX, x);
@@ -2071,19 +2086,18 @@
             // 计算中心偏移
             const currentCenterX = (minX + maxX) / 2;
             const currentCenterY = (minY + maxY) / 2;
-            const targetCenter = (gridSize - 1) / 2;
-            const offsetX = Math.round(targetCenter - currentCenterX);
-            const offsetY = Math.round(targetCenter - currentCenterY);
+            const offsetX = Math.round((gridWidth - 1) / 2 - currentCenterX);
+            const offsetY = Math.round((gridHeight - 1) / 2 - currentCenterY);
 
             // 移动像素
-            const newData = Array(gridSize).fill(null).map(() => Array(gridSize).fill(null));
+            const newData = Array(gridHeight).fill(null).map(() => Array(gridWidth).fill(null));
             
-            for (let y = 0; y < gridSize; y++) {
-                for (let x = 0; x < gridSize; x++) {
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
                     if (pixelData[y][x]) {
                         const newX = x + offsetX;
                         const newY = y + offsetY;
-                        if (newX >= 0 && newX < gridSize && newY >= 0 && newY < gridSize) {
+                        if (newX >= 0 && newX < gridWidth && newY >= 0 && newY < gridHeight) {
                             newData[newY][newX] = pixelData[y][x];
                         }
                     }
@@ -2096,8 +2110,8 @@
 
         // 刷新网格显示
         function refreshGrid() {
-            for (let y = 0; y < gridSize; y++) {
-                for (let x = 0; x < gridSize; x++) {
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
                     const cell = document.querySelector(`[data-x="${x}"][data-y="${y}"]`);
                     if (pixelData[y][x]) {
                         cell.className = 'pixel-cell filled';
@@ -2123,16 +2137,20 @@
             }
         }
 
-        // 單一地图大小欄位（最大支持 40x40）
+        // Supports rectangular maps up to 160x160 while retaining old GridSize
+        // JSON compatibility. Existing pixels are preserved in the overlap.
         function updateGridSizeCustom() {
-            const size = parseInt(document.getElementById('gridWidth').value) || 10;
-            gridSize = Math.max(3, Math.min(40, size));
-            // 保存舊数据
+            const nextWidth = Math.max(3, Math.min(160, parseInt(document.getElementById('gridWidth').value) || 10));
+            const nextHeight = Math.max(3, Math.min(160, parseInt(document.getElementById('gridHeight').value) || 10));
             const oldData = pixelData;
+            gridWidth = nextWidth;
+            gridHeight = nextHeight;
+            gridSize = Math.max(gridWidth, gridHeight);
+            document.getElementById('gridWidth').value = gridWidth;
+            document.getElementById('gridHeight').value = gridHeight;
             initGrid();
-            // 恢復可恢復的像素
-            for (let y = 0; y < Math.min(oldData.length, gridSize); y++) {
-                for (let x = 0; x < Math.min((oldData[y] || []).length, gridSize); x++) {
+            for (let y = 0; y < Math.min(oldData.length, gridHeight); y++) {
+                for (let x = 0; x < Math.min((oldData[y] || []).length, gridWidth); x++) {
                     if (oldData[y][x]) {
                         pixelData[y][x] = oldData[y][x];
                     }
@@ -2144,8 +2162,8 @@
         // 填充所有空白格子
         function fillEmptyCells() {
             if (!selectedColor) { alert('請先选择一個颜色'); return; }
-            for (let y = 0; y < gridSize; y++) {
-                for (let x = 0; x < gridSize; x++) {
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
                     if (!pixelData[y][x]) {
                         pixelData[y][x] = selectedColor;
                     }
@@ -2157,8 +2175,8 @@
         // 刪除所有指定颜色的格子
         function deleteSelectedColor() {
             if (!selectedColor) { alert('請先选择要刪除的颜色'); return; }
-            for (let y = 0; y < gridSize; y++) {
-                for (let x = 0; x < gridSize; x++) {
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
                     if (pixelData[y][x] === selectedColor) {
                         pixelData[y][x] = null;
                     }
@@ -2190,9 +2208,9 @@
         // 仅在目标方向有足够空位时才允许位移
         function shiftPixels(dx, dy) {
             // 找出所有有内容的格子的边界
-            let minX = gridSize, maxX = -1, minY = gridSize, maxY = -1;
-            for (let y = 0; y < gridSize; y++) {
-                for (let x = 0; x < gridSize; x++) {
+            let minX = gridWidth, maxX = -1, minY = gridHeight, maxY = -1;
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
                     if (pixelData[y][x]) {
                         minX = Math.min(minX, x);
                         maxX = Math.max(maxX, x);
@@ -2206,18 +2224,18 @@
 
             // 检查目标方向是否有足够空位（整体移动1格）
             if (dx === -1 && minX === 0) { alert('左侧已到边界，无法继续向左移动'); return; }
-            if (dx === 1  && maxX === gridSize - 1) { alert('右侧已到边界，无法继续向右移动'); return; }
+            if (dx === 1  && maxX === gridWidth - 1) { alert('右侧已到边界，无法继续向右移动'); return; }
             if (dy === -1 && minY === 0) { alert('上方已到边界，无法继续向上移动'); return; }
-            if (dy === 1  && maxY === gridSize - 1) { alert('下方已到边界，无法继续向下移动'); return; }
+            if (dy === 1  && maxY === gridHeight - 1) { alert('下方已到边界，无法继续向下移动'); return; }
 
             // 执行位移（需要按方向决定遍历顺序，避免覆盖未处理的格子）
-            const newData = Array(gridSize).fill(null).map(() => Array(gridSize).fill(null));
-            for (let y = 0; y < gridSize; y++) {
-                for (let x = 0; x < gridSize; x++) {
+            const newData = Array(gridHeight).fill(null).map(() => Array(gridWidth).fill(null));
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
                     if (pixelData[y][x]) {
                         const nx = x + dx;
                         const ny = y + dy;
-                        if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
+                        if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight) {
                             newData[ny][nx] = pixelData[y][x];
                         }
                     }
@@ -2237,8 +2255,8 @@
         function generateLevel() {
             // 收集所有像素
             const pixels = [];
-            for (let y = 0; y < gridSize; y++) {
-                for (let x = 0; x < gridSize; x++) {
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
                     if (pixelData[y][x]) {
                         pixels.push({
                             x, y,
@@ -2456,8 +2474,8 @@
             const colorToIndex = {};
             const colorListObj = {};
             let colorIdx = 1;
-            for (let y = 0; y < gridSize; y++) {
-                for (let x = 0; x < gridSize; x++) {
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
                     const c = pixelData[y][x];
                     if (c && colorToIndex[c] === undefined) {
                         colorToIndex[c] = colorIdx;
@@ -2468,15 +2486,17 @@
             }
             // PixelMap：一维数组，0=空格，其他数字从 ColorList 取颜色
             const flatPixelMap = [];
-            for (let y = 0; y < gridSize; y++) {
-                for (let x = 0; x < gridSize; x++) {
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
                     const c = pixelData[y][x];
                     flatPixelMap.push(c ? (colorToIndex[c] || 0) : 0);
                 }
             }
             levelData = {
                 Id: levelId,
-                GridSize: gridSize,
+                ...(gridWidth === gridHeight ? { GridSize: gridWidth } : {}),
+                GridWidth: gridWidth,
+                GridHeight: gridHeight,
                 LauncherCount: launcherCount,
                 StorageSize: parseInt(document.getElementById('storageSize').value),
                 ColorList: colorListObj,
@@ -2553,7 +2573,7 @@
 
         // 将一维 PixelMap 还原为二维数组（支持新格式 ColorList + 兼容旧格式）
         // colorList: {"1":"#feca57","2":"#ff6b6b",...}，若为 null/undefined 则按旧格式处理
-        function flatPixelMapTo2D(pixelMap, gs, colorList) {
+        function flatPixelMapTo2D(pixelMap, width, height, colorList) {
             // 构建数字→颜色映射（新格式）
             const indexToColor = {};
             if (colorList && typeof colorList === 'object') {
@@ -2564,10 +2584,10 @@
             // 一维数组格式
             if (Array.isArray(pixelMap) && !Array.isArray(pixelMap[0])) {
                 const result = [];
-                for (let y = 0; y < gs; y++) {
+                for (let y = 0; y < height; y++) {
                     result[y] = [];
-                    for (let x = 0; x < gs; x++) {
-                        const v = pixelMap[y * gs + x];
+                    for (let x = 0; x < width; x++) {
+                        const v = pixelMap[y * width + x];
                         if (!v || v === 0) {
                             result[y][x] = null;
                         } else if (hasColorList && typeof v === 'number') {
@@ -2588,8 +2608,9 @@
         // 初始化游戏狀態（支持多個轉盤同時旋轉）
         function initGameState() {
             if (!levelData) return null;
-            const gs = levelData.GridSize;
-            const pixelMap2D = flatPixelMapTo2D(levelData.PixelMap, gs, levelData.ColorList);
+            const width = levelData.GridWidth || levelData.GridSize;
+            const height = levelData.GridHeight || levelData.GridSize;
+            const pixelMap2D = flatPixelMapTo2D(levelData.PixelMap, width, height, levelData.ColorList);
             
             // 初始化冷冻状态：{ [itemId]: remaining }
             const frozenState = {};
@@ -2800,18 +2821,19 @@
             
             // 固定地图显示區域大小（轉盤直徑250px左右，地图需在轉盤內）
             const maxMapSize = 220; // 固定最大尺寸（px）
-            const gs = levelData.GridSize;
+            const width = levelData.GridWidth || levelData.GridSize;
+            const height = levelData.GridHeight || levelData.GridSize;
             const gap = 1;
             
             // 计算每個格子的尺寸
-            const cellSize = Math.max(8, Math.floor((maxMapSize - gap * (gs - 1) - 16) / gs));
+            const cellSize = Math.max(4, Math.floor((maxMapSize - gap * (Math.max(width, height) - 1) - 16) / Math.max(width, height)));
             
             grid.style.gap = `${gap}px`;
             grid.style.padding = '8px';
-            grid.style.gridTemplateColumns = `repeat(${gs}, ${cellSize}px)`;
+            grid.style.gridTemplateColumns = `repeat(${width}, ${cellSize}px)`;
             
-            for (let y = 0; y < gs; y++) {
-                for (let x = 0; x < gs; x++) {
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
                     const cell = document.createElement('div');
                     cell.id = `pixel-${x}-${y}`;
                     cell.style.cssText = `
@@ -3812,7 +3834,8 @@
         // 從发射器找到可射擊的同色目標（正方形路徑版本）
         // t 為正方形路徑參數 [0,4)：0-1=上邊(左→右)，1-2=右邊(上→下)，2-3=下邊(右→左)，3-4=左邊(下→上)
         function findShootableTarget(color, t, beltCenterX, beltCenterY, parentRect) {
-            const gs = levelData.GridSize;
+            const width = levelData.GridWidth || levelData.GridSize;
+            const height = levelData.GridHeight || levelData.GridSize;
             
             // 歸一化 t 到 [0, 4)
             const nt = ((t % 4) + 4) % 4;
@@ -3838,13 +3861,14 @@
             // 精确对准判断：发射器必须处于目标格子中心位置附近才能发射
             // 每个格子宽度 = 1/gs，格子中心在 (k + 0.5) / gs 处
             // 对准容忍度：格子宽度的 40%（即 0.4/gs）
-            const tolerance = 0.4 / gs;
+            const sideLength = nt < 1 || nt >= 3 ? width : height;
+            const tolerance = 0.4 / sideLength;
             
             // 计算发射器当前位置最近的格子中心
             // posRatio * gs = 当前位置的格子坐标（连续值）
-            const posInGrid = posRatio * gs; // [0, gs)
+            const posInGrid = posRatio * sideLength;
             const cellIndex = Math.floor(posInGrid);
-            const clampedIndex = Math.max(0, Math.min(gs - 1, cellIndex));
+            const clampedIndex = Math.max(0, Math.min(sideLength - 1, cellIndex));
             // 格子中心在 clampedIndex + 0.5 处（相对于格子坐标）
             const cellCenterPosInGrid = clampedIndex + 0.5;
             // 判断发射器是否在格子中心 ±tolerance*gs 范围内
@@ -3860,9 +3884,9 @@
 
             if (direction.dx !== 0) {
                 // 水平射擊：掃描第 clampedIndex 行
-                const y = clampedIndex;
-                const startX = direction.dx === -1 ? gs - 1 : 0;
-                const endX = direction.dx === -1 ? -1 : gs;
+                const y = Math.min(height - 1, clampedIndex);
+                const startX = direction.dx === -1 ? width - 1 : 0;
+                const endX = direction.dx === -1 ? -1 : width;
                 
                 for (let x = startX; x !== endX; x += direction.dx) {
                     const pixel = gameState.pixelMap[y][x];
@@ -3872,9 +3896,9 @@
                 }
             } else {
                 // 垂直射擊：掃描第 clampedIndex 列
-                const x = clampedIndex;
-                const startY = direction.dy === 1 ? 0 : gs - 1;
-                const endY = direction.dy === 1 ? gs : -1;
+                const x = Math.min(width - 1, clampedIndex);
+                const startY = direction.dy === 1 ? 0 : height - 1;
+                const endY = direction.dy === 1 ? height : -1;
                 
                 for (let y = startY; y !== endY; y += direction.dy) {
                     const pixel = gameState.pixelMap[y][x];
@@ -3889,7 +3913,8 @@
 
         // 檢查子彈路徑是否暢通（從轉盤邊緣到目標方塊之間沒有其他颜色的活動方塊阻擋）
         function checkBulletPath(targetX, targetY, bulletColor) {
-            const gs = levelData.GridSize;
+            const width = levelData.GridWidth || levelData.GridSize;
+            const height = levelData.GridHeight || levelData.GridSize;
             const belt = document.getElementById('conveyorBelt');
             const parentRect = belt ? belt.parentElement.getBoundingClientRect() : null;
             const beltRect = belt ? belt.getBoundingClientRect() : null;
@@ -3911,8 +3936,8 @@
             const endY = targetRect.top + targetRect.height / 2 - parentRect.top;
 
             // 檢查路徑上的每個网格方塊
-            for (let y = 0; y < gs; y++) {
-                for (let x = 0; x < gs; x++) {
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
                     if (x === targetX && y === targetY) continue; // 跳過目標本身
                     
                     const pixel = gameState.pixelMap[y][x];
@@ -3959,10 +3984,11 @@
         // 獲取当前暴露在外的像素（不被其他活動像素阻擋）
         function getExposedPixels() {
             const exposed = [];
-            const gs = levelData.GridSize;
+            const width = levelData.GridWidth || levelData.GridSize;
+            const height = levelData.GridHeight || levelData.GridSize;
             
-            for (let y = 0; y < gs; y++) {
-                for (let x = 0; x < gs; x++) {
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
                     const pixel = gameState.pixelMap[y][x];
                     if (pixel && pixel.active) {
                         // 判斷這個像素是否在外圍（至少一面沒有活動像素阻擋）
@@ -3980,10 +4006,11 @@
 
         // 判斷像素是否暴露在外（邊緣檢測）
         function isPixelExposed(x, y) {
-            const gs = levelData.GridSize;
+            const width = levelData.GridWidth || levelData.GridSize;
+            const height = levelData.GridHeight || levelData.GridSize;
             
             // 邊界上的像素一定是暴露的
-            if (x === 0 || x === gs - 1 || y === 0 || y === gs - 1) return true;
+            if (x === 0 || x === width - 1 || y === 0 || y === height - 1) return true;
             
             // 檢查四個方向是否有「通向邊緣的路徑」（即存在一條路徑到達邊界，路徑上沒有活動像素）
             // 簡化判斷：只要上下左右任一方向上存在空位（非活動像素），就視為暴露
@@ -4000,7 +4027,7 @@
                 
                 // 沿著方向檢查到邊界
                 let pathClear = true;
-                while (nx >= 0 && nx < gs && ny >= 0 && ny < gs) {
+                while (nx >= 0 && nx < width && ny >= 0 && ny < height) {
                     const neighbor = gameState.pixelMap[ny][nx];
                     if (neighbor && neighbor.active) {
                         pathClear = false;
@@ -4018,8 +4045,10 @@
 
         // 檢查勝利條件
         function checkWinCondition() {
-            for (let y = 0; y < levelData.GridSize; y++) {
-                for (let x = 0; x < levelData.GridSize; x++) {
+            const width = levelData.GridWidth || levelData.GridSize;
+            const height = levelData.GridHeight || levelData.GridSize;
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
                     const pixel = gameState.pixelMap[y][x];
                     if (pixel && pixel.active) {
                         return; // 還有像素未消除
@@ -4913,7 +4942,9 @@
         // 将导入的关卡数据应用到编辑器
         function applyImportedLevel(data) {
             // 兼容大写和小写字段名
-            const gs = data.GridSize || data.gridSize;
+            const legacySize = data.GridSize || data.gridSize;
+            const width = Number(data.GridWidth || data.gridWidth || legacySize);
+            const height = Number(data.GridHeight || data.gridHeight || legacySize);
             const rawLevelId = data.Id ?? data.id;
             const parsedLevelId = Number.parseInt(rawLevelId, 10);
             const levelId = Number.isInteger(parsedLevelId) && parsedLevelId >= 1 ? parsedLevelId : 1;
@@ -4923,14 +4954,21 @@
             const launchers = data.Launchers || data.launchers;
             const difficulty = data.Difficulty || data.difficulty || 3;
 
-            if (!gs || !pixelMap || !launchers) {
-                alert('JSON 缺少必要字段（GridSize、PixelMap、Launchers），请确认导入的是正确的关卡文件。');
+            if (!Number.isInteger(width) || !Number.isInteger(height) || width < 3 || height < 3 || !pixelMap || !launchers) {
+                alert('JSON 缺少必要字段（GridWidth/GridHeight 或 GridSize、PixelMap、Launchers），请确认导入的是正确的关卡文件。');
+                return;
+            }
+            if (Array.isArray(pixelMap) && !Array.isArray(pixelMap[0]) && pixelMap.length !== width * height) {
+                alert(`PixelMap 长度错误：期望 ${width * height}，实际 ${pixelMap.length}`);
                 return;
             }
 
-            // 1. 更新网格大小设置
-            gridSize = gs;
-            document.getElementById('gridWidth').value = gs;
+            // 1. 更新网格尺寸
+            gridWidth = width;
+            gridHeight = height;
+            gridSize = Math.max(width, height);
+            document.getElementById('gridWidth').value = width;
+            document.getElementById('gridHeight').value = height;
             document.getElementById('levelId').value = levelId;
             if (launcherCount) document.getElementById('launcherCount').value = launcherCount;
             if (storageSize) document.getElementById('storageSize').value = storageSize;
@@ -4939,22 +4977,22 @@
                 setDifficulty(Math.round(difficulty));
             }
 
-            // 2. 重新初始化网格（根据新 gridSize）
+            // 2. 重新初始化网格
             initGrid();
 
             // 3. 还原像素数据（兼容新版一维数组和旧版二维数组，支持新格式 ColorList）
             const importedColorList = data.ColorList || data.colorList || null;
-            const pixelMap2D = flatPixelMapTo2D(pixelMap, gs, importedColorList);
-            for (let y = 0; y < gs; y++) {
-                for (let x = 0; x < gs; x++) {
+            const pixelMap2D = flatPixelMapTo2D(pixelMap, width, height, importedColorList);
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
                     pixelData[y][x] = pixelMap2D[y][x] || null;
                 }
             }
 
             // 4. 收集颜色并更新调色板
             const colorSet = new Set();
-            for (let y = 0; y < gs; y++) {
-                for (let x = 0; x < gs; x++) {
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
                     if (pixelData[y][x]) colorSet.add(pixelData[y][x]);
                 }
             }
@@ -4965,7 +5003,9 @@
             // 5. 还原 levelData（完整保留导入的数据，包括发射器配置和连接关系）
             levelData = {
                 Id: levelId,
-                GridSize: gs,
+                ...(width === height ? { GridSize: width } : {}),
+                GridWidth: width,
+                GridHeight: height,
                 LauncherCount: launcherCount || 3,
                 StorageSize: storageSize || 5,
                 ColorList: importedColorList || null,
@@ -4992,8 +5032,8 @@
 
             // 8. 计算层级信息（从 PixelMap 重建 layers 数组）
             const pixels = [];
-            for (let y = 0; y < gs; y++) {
-                for (let x = 0; x < gs; x++) {
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
                     if (pixelData[y][x]) {
                         pixels.push({ x, y, color: pixelData[y][x], layer: calculateLayer(x, y) });
                     }
@@ -5028,7 +5068,7 @@
             switchTab('game');
             previewGame();
 
-            alert(`✅ 关卡导入成功！\n地图: ${gs}×${gs}，发射列: ${launcherCount}，暂存槽: ${storageSize}`);
+            alert(`✅ 关卡导入成功！\n地图: ${width}×${height}，发射列: ${launcherCount}，暂存槽: ${storageSize}`);
         }
     </script>
 </body>
