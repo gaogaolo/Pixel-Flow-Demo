@@ -3859,21 +3859,20 @@
             }
             
             // 精确对准判断：发射器必须处于目标格子中心位置附近才能发射
-            // 每个格子宽度 = 1/gs，格子中心在 (k + 0.5) / gs 处
-            // 对准容忍度：格子宽度的 40%（即 0.4/gs）
+            // 每条边的格子数量可能不同，按当前边长计算中心和容忍度。
             const sideLength = nt < 1 || nt >= 3 ? width : height;
             const tolerance = 0.4 / sideLength;
             
             // 计算发射器当前位置最近的格子中心
-            // posRatio * gs = 当前位置的格子坐标（连续值）
+            // posRatio * sideLength = 当前位置的格子坐标（连续值）
             const posInGrid = posRatio * sideLength;
             const cellIndex = Math.floor(posInGrid);
             const clampedIndex = Math.max(0, Math.min(sideLength - 1, cellIndex));
             // 格子中心在 clampedIndex + 0.5 处（相对于格子坐标）
             const cellCenterPosInGrid = clampedIndex + 0.5;
-            // 判断发射器是否在格子中心 ±tolerance*gs 范围内
+            // 判断发射器是否在格子中心 ±0.4格范围内
             const distToCenter = Math.abs(posInGrid - cellCenterPosInGrid);
-            if (distToCenter > tolerance * gs) {
+            if (distToCenter > tolerance * sideLength) {
                 // 未对准任何格子中心，不允许发射
                 return null;
             }
