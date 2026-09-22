@@ -1293,6 +1293,72 @@
             return counts;
         }
 
+        // Rectangular maps with an even side can have half-step layers (for
+        // example 14.5). Keep the actual occupied layers instead of assuming
+        // every layer is an integer.
+        function getOccupiedLayerBuckets(pixels) {
+            const buckets = new Map();
+            pixels.forEach(pixel => {
+                if (!buckets.has(pixel.layer)) buckets.set(pixel.layer, []);
+                buckets.get(pixel.layer).push(pixel);
+            });
+            return Array.from(buckets.entries())
+                .sort(([layerA], [layerB]) => layerB - layerA)
+                .map(([layer, layerPixels]) => ({ layer, pixels: layerPixels }));
+        }
+
+        // Generated levels must always contain at least one bullet per map
+        // block of the same color. This remains a safeguard if generation is
+        // changed later or receives irregular imported color data.
+        function repairLauncherAmmoBudget(data) {
+            if (!data || !data.PixelMap || !data.Launchers) return [];
+
+            const width = data.GridWidth || data.GridSize;
+            const height = data.GridHeight || data.GridSize;
+            if (!Number.isInteger(width) || !Number.isInteger(height)) return [];
+
+            const keyFor = color => normalizeColor(String(color || '').trim()).toLowerCase();
+            const demandByColor = {};
+            const map = flatPixelMapTo2D(data.PixelMap, width, height, data.ColorList);
+            map.forEach(row => row.forEach(color => {
+                if (!color) return;
+                const key = keyFor(color);
+                if (!demandByColor[key]) demandByColor[key] = { color, amount: 0 };
+                demandByColor[key].amount++;
+            }));
+
+            const ammoByColor = {};
+            data.Launchers.forEach(column => (column.Items || []).forEach(item => {
+                const key = keyFor(item.Color);
+                ammoByColor[key] = (ammoByColor[key] || 0) + (Number(item.Ammo) || 0);
+            }));
+
+            const repairs = [];
+            Object.entries(demandByColor).forEach(([key, demand]) => {
+                const shortfall = demand.amount - (ammoByColor[key] || 0);
+                if (shortfall <= 0) return;
+
+                const matchingItems = data.Launchers
+                    .flatMap(column => column.Items || [])
+                    .filter(item => keyFor(item.Color) === key);
+                if (matchingItems.length > 0) {
+                    // Preserve the existing queue arrangement.
+                    const item = matchingItems[matchingItems.length - 1];
+                    item.Ammo = (Number(item.Ammo) || 0) + shortfall;
+                } else {
+                    // Defensive fallback for malformed external data.
+                    const targetColumn = data.Launchers
+                        .slice()
+                        .sort((a, b) => (a.Items || []).length - (b.Items || []).length)[0];
+                    if (targetColumn) {
+                        targetColumn.Items.push({ Color: demand.color, Ammo: shortfall, Hidden: false });
+                    }
+                }
+                repairs.push({ color: demand.color, shortfall });
+            });
+            return repairs;
+        }
+
         // 更新颜色调色板
         function updateColorPalette(colors) {
             const palette = document.getElementById('colorPalette');
@@ -2310,15 +2376,14 @@
             const layers = [];
             let currentLayer = 1;
 
-            // 從外层到內层處理
-            const maxLayer = Math.max(...pixels.map(p => p.layer));
+            // 從外层到內层處理。矩形地图的中心可能落在半格，层级会有
+            // 0.5 步长，因此必须遍历实际存在的层级，不能按整数倒数。
+            const layerBuckets = getOccupiedLayerBuckets(pixels);
             
             // 收集每层每種颜色的總弹药需求
             const ammoRegistry = {}; // 記錄每個颜色的累計弹药
             
-            for (let layer = maxLayer; layer >= 0; layer--) {
-                const layerPixels = pixels.filter(p => p.layer === layer);
-                if (layerPixels.length === 0) continue;
+            for (const { pixels: layerPixels } of layerBuckets) {
 
                 // 按颜色分組
                 const layerColorGroups = {};
@@ -2404,7 +2469,6 @@
             // innerLayer 越大 = 越外层，越小 = 越內层
             // 难度1: 外层先 → 按 innerLayer 降序排（大的在頂部）
             // 难度5: 內层先 → 按 innerLayer 升序排（小的在頂部）
-            const totalLayers = maxLayer + 1;
             const colorCount = Object.keys(colorGroups).length;
 
             // 首先均衡分配到各列（不考慮顺序）
@@ -2512,6 +2576,7 @@
                 LauncherLinks: [],  // [{IdA, IdB}]
                 FrozenLaunchers: [] // [{ItemId, RequiredCount}]
             };
+            repairLauncherAmmoBudget(levelData);
             // 生成后为所有 Item 分配唯一 _id，并重置连接/冷冻模式状态
             _itemIdCounter = 0;
             linkModeActive = false;
@@ -5039,12 +5104,9 @@
                 }
             }
             if (pixels.length > 0) {
-                const maxLayer = Math.max(...pixels.map(p => p.layer));
                 const layers = [];
                 let currentLayer = 1;
-                for (let layer = maxLayer; layer >= 0; layer--) {
-                    const layerPixels = pixels.filter(p => p.layer === layer);
-                    if (layerPixels.length === 0) continue;
+                for (const { pixels: layerPixels } of getOccupiedLayerBuckets(pixels)) {
                     const colorSet2 = new Set(layerPixels.map(p => p.color));
                     layers.push({ layer: currentLayer, pixels: layerPixels, colors: Array.from(colorSet2) });
                     currentLayer++;
